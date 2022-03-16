@@ -20,68 +20,28 @@ char kopf1 = "aktuel letzte vorlet  aktuel  letzt.  vorlet  aktuel   letzte   vo
 char kopf2 = "Stunde Stunde Stunde  Tag     Tag     Tag     Woche    Woche    Woche    ";
 
 
-Histogram h00Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h01Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h02Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h10Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h11Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h12Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h20Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h21Volt(184, 2, 47); // 184 V ... 276 V
-Histogram h22Volt(184, 2, 47); // 184 V ... 276 V
-
-
-
-Histogram h00Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h01Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h02Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h10Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h11Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h12Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h20Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h21Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-Histogram h22Freq(470, 1, 61); // 47.0 Hz ... 53.0 Hz
-
 Screen screen;
 
 void App::setup(){
     Serial.begin(115200);
 
-    Serial.println("Power Grid Monitor");
-    Serial.println("enter v to print voltage histogram");
-    Serial.println("enter f to print frequency histogram");
+    Serial.println("# Power Grid Monitor                             #");
+    Serial.println("# Prints Voltage in V for L1, L2 and L3          #");
+    Serial.println("# and frequency in 0.01Hz for each mains period. #");
 
-    h00Volt.linkHistogram(50LL*3600,      &h01Volt);
-    h01Volt.linkHistogram(50LL*3600,      &h02Volt);
-    h02Volt.linkHistogram(50LL*3600,      &h10Volt);
-
-    h10Volt.linkHistogram(50LL*3600*24,   &h11Volt);
-    h11Volt.linkHistogram(50LL*3600*24,   &h12Volt);
-    h12Volt.linkHistogram(50LL*3600*24,   &h20Volt);
-
-    h20Volt.linkHistogram(50LL*3600*24*7, &h01Volt);
-    h21Volt.linkHistogram(50LL*3600*24*7, &h02Volt);
-    h22Volt.linkHistogram(50LL*3600*24*7, nullptr);
-
-
-    h00Freq.linkHistogram(50LL*3600,      &h01Freq);
-    h01Freq.linkHistogram(50LL*3600,      &h02Freq);
-    h02Freq.linkHistogram(50LL*3600,      &h10Freq);
-
-    h10Freq.linkHistogram(50LL*3600*24,   &h11Freq);
-    h11Freq.linkHistogram(50LL*3600*24,   &h12Freq);
-    h12Freq.linkHistogram(50LL*3600*24,   &h20Freq);
-
-    h20Freq.linkHistogram(50LL*3600*24*7, &h01Freq);
-    h21Freq.linkHistogram(50LL*3600*24*7, &h02Freq);
-    h22Freq.linkHistogram(50LL*3600*24*7, nullptr);
 }
 
 void App::loop(){
     static int64_t quadSum = 0;
     static int16_t sumCount = 0;
-    int16_t x = testSignal();
+    static uint32_t microsStart = 0;
+    int16_t x;
     int32_t rms;
+    int32_t freq; // in 0.01 Hz
+
+    //x = testSignal();
+    x = ((analogRead(A0)-512)*3*229ll)/290;
+    // TODO: estimate DC-offset
 
     static enum Halbwelle{Positiv, Negativ}halbWelle = Positiv;
     static Halbwelle lastHW = Positiv;
@@ -94,19 +54,21 @@ void App::loop(){
     }
 
     if(lastHW == Negativ && halbWelle == Positiv){
+        uint32_t microsEnd = micros();
+        uint32_t dt = microsEnd - microsStart;
+        microsStart = microsEnd;
+
         rms = sqrt(quadSum/sumCount);
-        Serial.println(rms);
+        Serial.print(rms);
+        Serial.print(" ");
+        Serial.println(uint16_t(100000000ull/dt));
 //        Serial.print(" ");
 //        Serial.println(sumCount);
-        h00Volt.add(rms);
 
         quadSum = 0;
         sumCount = 0;
     }
 
-    if(h00Volt.totalElements == 50*3600){
-
-    }
 
     lastHW = halbWelle;
 
@@ -116,8 +78,6 @@ void App::loop(){
     if(Serial.available()){
         if(Serial.read() == 'p'){
             screen.clear();
-            h00Volt.printHeader(&screen, 0, 0);
-            h00Volt.printData(&screen, 10, 0);
             Serial.println("------");
             screen.writeToSerial();
             Serial.println("------");
@@ -125,7 +85,7 @@ void App::loop(){
     }
 }
 
-int32_t App::sqrt(int64_t y)
+int32_t App::iSqrt(int64_t y)
 {
     // initial underestimate, L <= isqrt(y)
     int64_t L = 0;
